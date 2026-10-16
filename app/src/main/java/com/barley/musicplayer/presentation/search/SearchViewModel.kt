@@ -49,6 +49,10 @@ class SearchViewModel @Inject constructor(
 
     fun onQueryChange(newQuery: String) {
         query = newQuery
+        if (newQuery.isBlank()) {
+            _results.value = emptyList()
+            _errorMessage.value = null
+        }
     }
 
     fun onSearch() {
