@@ -1,0 +1,7 @@
+<resources>
+    <color name="musicplayer_red">#FF3B30</color>
+    <color name="musicplayer_red_dark">#C62828</color>
+    <color name="musicplayer_amber">#FFB300</color>
+    <color name="musicplayer_background">#FAFAFA</color>
+    <color name="ic_launcher_background">#1C1C1E</color>
+</resources>
