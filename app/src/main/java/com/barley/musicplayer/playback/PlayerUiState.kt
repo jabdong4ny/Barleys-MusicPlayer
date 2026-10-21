@@ -6,6 +6,9 @@ data class PlayerUiState(
     val currentTitle: String? = null,
     val currentArtist: String? = null,
     val currentArtworkUrl: String? = null,
+    val currentDescription: String? = null,
+    val chapters: List<Chapter> = emptyList(),
+    val currentPositionMillis: Long = 0L,
     val hasPrevious: Boolean = false,
     val hasNext: Boolean = false,
 )

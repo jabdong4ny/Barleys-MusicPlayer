@@ -1,12 +1,14 @@
 package com.barley.musicplayer.data.youtube
 
 import android.net.Uri
+import android.text.Html
 import com.barley.musicplayer.data.model.Track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.stream.Description
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import org.schabi.newpipe.extractor.stream.StreamType
@@ -24,10 +26,10 @@ class YoutubeExtractorService @Inject constructor(okHttpClient: OkHttpClient) {
 
     private val youtubeService = ServiceList.YouTube
 
-    // videoId -> 추출된 스트림 URL. 스트림 추출은 YouTube 플레이어 JS를 내려받아 해석(Rhino)까지 하는
+    // videoId -> 추출된 스트림 URL/설명. 스트림 추출은 YouTube 플레이어 JS를 내려받아 해석(Rhino)까지 하는
     // 무거운 작업이라, ExoPlayer가 같은 곡을 다시 열 때마다(탐색/재시도/프리버퍼 등) 매번 새로 돌리면
-    // CPU 부하가 커진다. 그래서 짧은 시간 동안은 캐시된 URL을 재사용한다.
-    private val streamUrlCache = ConcurrentHashMap<String, CachedStreamUrl>()
+    // CPU 부하가 커진다. 그래서 짧은 시간 동안은 캐시된 결과를 재사용한다.
+    private val streamDetailsCache = ConcurrentHashMap<String, CachedStreamDetails>()
 
     init {
         NewPipe.init(NewPipeDownloaderImpl(okHttpClient))
@@ -47,9 +49,17 @@ class YoutubeExtractorService @Inject constructor(okHttpClient: OkHttpClient) {
             .map { it.toTrack() }
     }
 
-    suspend fun resolveAudioStreamUrl(videoId: String): String {
-        streamUrlCache[videoId]?.let { cached ->
-            if (!cached.isExpired()) return cached.url
+    suspend fun resolveAudioStreamUrl(videoId: String): String = resolveStreamDetails(videoId).url
+
+    /**
+     * 현재 재생 중인 영상의 설명을 가져온다. [resolveAudioStreamUrl]과 같은 추출 결과를 캐시로
+     * 공유하므로, 둘 중 하나가 먼저 호출되면 나머지는 추가 네트워크 요청 없이 캐시를 재사용한다.
+     */
+    suspend fun fetchDescription(videoId: String): String? = resolveStreamDetails(videoId).description
+
+    private suspend fun resolveStreamDetails(videoId: String): StreamDetails {
+        streamDetailsCache[videoId]?.let { cached ->
+            if (!cached.isExpired()) return cached.details
         }
         return withContext(Dispatchers.IO) {
             // ResolvingDataSource.Resolver는 IOException만 ExoPlayer의 정상적인 재생 오류 처리로
@@ -65,8 +75,10 @@ class YoutubeExtractorService @Inject constructor(okHttpClient: OkHttpClient) {
                     ?: extractor.audioStreams.maxByOrNull { it.averageBitrate }
                     ?: throw IOException("오디오 스트림을 찾을 수 없습니다 (라이브 방송일 수 있어요)")
                 val streamUrl = bestAudio.content ?: throw IOException("스트림 URL이 없습니다")
-                streamUrlCache[videoId] = CachedStreamUrl(streamUrl, System.currentTimeMillis())
-                streamUrl
+                val description = extractor.description?.toPlainText()?.takeIf { it.isNotBlank() }
+                val details = StreamDetails(streamUrl, description)
+                streamDetailsCache[videoId] = CachedStreamDetails(details, System.currentTimeMillis())
+                details
             } catch (e: IOException) {
                 throw e
             } catch (e: Exception) {
@@ -75,7 +87,19 @@ class YoutubeExtractorService @Inject constructor(okHttpClient: OkHttpClient) {
         }
     }
 
-    private data class CachedStreamUrl(val url: String, val resolvedAtMillis: Long) {
+    // 유튜브 영상 설명은 보통 HTML(<br>, <a> 등)로 내려와서, 화면에는 일반 텍스트로 바꿔서 보여준다.
+    private fun Description.toPlainText(): String? {
+        val raw = content ?: return null
+        return if (type == Description.HTML) {
+            Html.fromHtml(raw, Html.FROM_HTML_MODE_LEGACY).toString().trim()
+        } else {
+            raw.trim()
+        }
+    }
+
+    private data class StreamDetails(val url: String, val description: String?)
+
+    private data class CachedStreamDetails(val details: StreamDetails, val resolvedAtMillis: Long) {
         fun isExpired(): Boolean = System.currentTimeMillis() - resolvedAtMillis > CACHE_TTL_MILLIS
     }
 

@@ -14,6 +14,8 @@
     <string name="player_pause">일시정지</string>
     <string name="player_skip_next">다음 곡</string>
     <string name="player_skip_previous">이전 곡</string>
+    <string name="player_description_expand">설명 더보기</string>
+    <string name="player_description_collapse">설명 접기</string>
 
     <string name="common_retry">다시 시도</string>
 </resources>

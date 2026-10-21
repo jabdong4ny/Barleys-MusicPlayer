@@ -91,6 +91,8 @@ class SearchViewModel @Inject constructor(
 
     fun skipPrevious() = playerController.skipPrevious()
 
+    fun seekToChapter(index: Int) = playerController.seekToChapter(index)
+
     override fun onCleared() {
         playerController.release()
         super.onCleared()

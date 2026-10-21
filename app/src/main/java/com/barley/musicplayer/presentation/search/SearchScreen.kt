@@ -69,6 +69,7 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
                     onTogglePlayPause = viewModel::togglePlayPause,
                     onSkipNext = viewModel::skipNext,
                     onSkipPrevious = viewModel::skipPrevious,
+                    onChapterClick = viewModel::seekToChapter,
                 )
             }
         },
