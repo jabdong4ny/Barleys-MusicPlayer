@@ -36,8 +36,9 @@ object AppModule {
     fun provideRecentSearchDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
         context.recentSearchDataStore
 
+    // 앱 종료 시 서비스가 플레이어를 release()하므로 싱글톤으로 두면 재실행 때 해제된 플레이어를 받게 된다.
+    // 서비스 인스턴스마다 새 플레이어를 만들도록 스코프를 두지 않는다.
     @Provides
-    @Singleton
     @UnstableApi
     fun provideExoPlayer(
         @ApplicationContext context: Context,

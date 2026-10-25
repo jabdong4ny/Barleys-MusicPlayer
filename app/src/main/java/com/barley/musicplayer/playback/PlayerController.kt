@@ -3,6 +3,7 @@ package com.barley.musicplayer.playback
 import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
+import android.os.Bundle
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
@@ -10,9 +11,13 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
 import com.barley.musicplayer.data.model.Track
 import com.barley.musicplayer.data.youtube.YoutubeExtractorService
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -20,8 +25,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -43,6 +51,11 @@ class PlayerController @Inject constructor(
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
+    private val _exitEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** 앱 내 종료 버튼이나 알림의 종료 버튼으로 앱 종료가 확정되면 발행된다. 화면은 이를 받아 스스로 닫는다. */
+    val exitEvents: SharedFlow<Unit> = _exitEvents.asSharedFlow()
+
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) = refreshState()
         override fun onPlaybackStateChanged(playbackState: Int) = refreshState()
@@ -57,13 +70,36 @@ class PlayerController @Inject constructor(
         }
     }
 
+    private val controllerListener = object : MediaController.Listener {
+        override fun onCustomCommand(
+            controller: MediaController,
+            command: SessionCommand,
+            args: Bundle,
+        ): ListenableFuture<SessionResult> {
+            if (command.customAction != MusicPlaybackService.ACTION_EXIT) {
+                return super.onCustomCommand(controller, command, args)
+            }
+            onExited()
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+
+        override fun onDisconnected(controller: MediaController) {
+            // 우리가 release()해서 끊긴 경우가 아니라 서비스가 먼저 내려간 경우에만 정리한다.
+            if (this@PlayerController.controller !== controller) return
+            release()
+            _state.value = PlayerUiState()
+        }
+    }
+
     fun connect(onReady: () -> Unit = {}) {
         if (controller != null) {
             onReady()
             return
         }
         val sessionToken = SessionToken(context, ComponentName(context, MusicPlaybackService::class.java))
-        val future = MediaController.Builder(context, sessionToken).buildAsync()
+        val future = MediaController.Builder(context, sessionToken)
+            .setListener(controllerListener)
+            .buildAsync()
         future.addListener(
             {
                 controller = future.get().also { it.addListener(playerListener) }
@@ -77,10 +113,13 @@ class PlayerController @Inject constructor(
 
     fun playQueue(tracks: List<Track>, startIndex: Int) {
         val mediaItems = tracks.map { it.toMediaItem() }
-        controller?.apply {
-            setMediaItems(mediaItems, startIndex, 0L)
-            prepare()
-            play()
+        // 종료 후 다시 들어왔거나 서비스가 내려가 연결이 끊긴 경우를 위해 필요하면 다시 연결한다.
+        connect {
+            controller?.apply {
+                setMediaItems(mediaItems, startIndex, 0L)
+                prepare()
+                play()
+            }
         }
     }
 
@@ -132,12 +171,43 @@ class PlayerController @Inject constructor(
         controller?.seekTo(chapter.startSeconds * 1000)
     }
 
+    /**
+     * 재생을 멈추고 백그라운드 서비스까지 완전히 내린다.
+     * 서비스가 종료를 브로드캐스트하면 [exitEvents]로 화면에 알린다.
+     */
+    fun exitApp() {
+        val player = controller
+        if (player == null) {
+            onExited()
+            return
+        }
+        val result = player.sendCustomCommand(MusicPlaybackService.EXIT_COMMAND, Bundle.EMPTY)
+        result.addListener(
+            {
+                val succeeded = runCatching { result.get().resultCode == SessionResult.RESULT_SUCCESS }.getOrDefault(false)
+                if (!succeeded) {
+                    Log.w("PlayerController", "exit command failed, stopping locally")
+                    player.stop()
+                    onExited()
+                }
+            },
+            ContextCompat.getMainExecutor(context),
+        )
+    }
+
     fun release() {
-        controller?.removeListener(playerListener)
-        controller?.release()
+        val current = controller
         controller = null
+        current?.removeListener(playerListener)
+        current?.release()
         descriptionJob?.cancel()
         positionPollJob?.cancel()
+    }
+
+    private fun onExited() {
+        release()
+        _state.value = PlayerUiState()
+        _exitEvents.tryEmit(Unit)
     }
 
     private fun refreshState() {
