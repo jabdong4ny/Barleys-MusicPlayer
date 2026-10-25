@@ -28,7 +28,7 @@
 
 Firebase 등 별도 설정이 필요 없습니다. Android Studio에서 `Barley-s-MusicPlayer` 폴더를 열고 Gradle sync 후 실행하면 바로 됩니다.
 
-## 지인에게 배포하기 (APK 직접 배포)
+## 배포하기 (APK 직접 배포)
 
 YouTube 스트림을 비공식으로 추출하는 앱이라 Play 스토어 정책(다른 서비스의 약관을 위반하는 앱 금지)에 걸리므로, Play 스토어 대신 서명된 APK를 GitHub Releases로 배포합니다.
 
@@ -48,10 +48,16 @@ keytool -genkeypair -v -keystore release.jks -alias barley \
 
 | 이름 | 값 |
 |---|---|
-| `RELEASE_KEYSTORE_BASE64` | `base64 -w0 release.jks` 출력값 (macOS는 `base64 -i release.jks`) |
+| `RELEASE_KEYSTORE_BASE64` | 키 파일을 base64로 바꾼 값 (아래 명령) |
 | `RELEASE_KEYSTORE_PASSWORD` | 키스토어 비밀번호 |
 | `RELEASE_KEY_ALIAS` | 키 별칭 (위 예시는 `barley`) |
-| `RELEASE_KEY_PASSWORD` | 키 비밀번호 |
+| `RELEASE_KEY_PASSWORD` | 키 비밀번호 (PKCS12 키스토어라 따로 묻지 않았다면 키스토어 비밀번호와 같음) |
+
+키 파일을 base64로 바꾸는 명령:
+
+- Linux: `base64 -w0 release.jks`
+- macOS: `base64 -i release.jks`
+- Windows (cmd, 결과가 클립보드로 복사됨): `powershell -NoProfile -Command "[Convert]::ToBase64String([IO.File]::ReadAllBytes('C:\경로\release.jks')) | Set-Clipboard"`
 
 ### 3. 릴리스 내기
 
@@ -65,11 +71,9 @@ git push origin v1.0.0
 - 태그는 `v주.부.수` 형식이어야 하고, versionCode는 태그에서 자동 계산됩니다 (`v1.2.3` → `10203`). 업데이트가 설치되려면 매번 이전보다 큰 버전으로 태그를 달아야 합니다.
 - 태그가 아닌 일반 push에도 release 빌드가 도는데, 빌드가 깨지지 않았는지 확인하는 용도입니다. 서명 키가 등록돼 있으면 서명된 테스트 APK가 Actions 실행 화면의 Artifacts에 7일간 남습니다.
 
-### 4. 지인들이 설치/업데이트하는 방법
+### 4. 사용자 설치/자동 업데이트
 
-- Release 페이지에서 APK를 받아 설치합니다. 처음 한 번은 "출처를 알 수 없는 앱 설치"를 허용해야 합니다.
-- [Obtainium](https://github.com/ImranR98/Obtainium)에 이 저장소의 Release를 등록해 두면 새 버전이 나왔을 때 알려주고 업데이트까지 해줍니다.
-- 저장소가 비공개(private)라면 Release도 저장소 접근 권한이 있는 사람만 볼 수 있습니다. 지인을 Collaborator로 추가하거나, 받은 APK를 직접 전달하세요.
+사용자용 안내는 [INSTALL.md](INSTALL.md)에 있습니다. [Obtainium](https://github.com/ImranR98/Obtainium)에 이 저장소를 등록하면 새 Release가 나올 때마다 자동으로 업데이트됩니다. Obtainium이 APK를 찾을 수 있도록 Release마다 APK는 하나만 첨부합니다 (워크플로가 그렇게 올립니다).
 
 ### 로컬에서 서명된 APK 빌드
 
@@ -88,3 +92,7 @@ keyPassword=키 비밀번호
 - **단일 재생목록**: 검색 결과 리스트가 곧 재생목록입니다. 즐겨찾기, 플레이리스트 저장, 재생 기록 같은 기능은 없습니다.
 - **라이브 스트림/프리미어 미지원**: 일반 동영상의 오디오만 재생합니다.
 - **네트워크 의존**: 스트림을 캐싱하지 않아서, 오프라인 재생은 안 됩니다.
+
+## 라이선스
+
+[GNU General Public License v3.0](LICENSE). 이 앱이 쓰는 NewPipeExtractor가 GPLv3라서, 이 앱을 배포할 때도 GPLv3로 소스를 공개합니다.
