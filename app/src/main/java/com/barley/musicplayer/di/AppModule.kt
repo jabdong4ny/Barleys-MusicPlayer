@@ -56,5 +56,11 @@ object AppModule {
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
+            .apply {
+                // 오디오 전용 스트림이 없어 오디오+비디오 스트림으로 재생할 때도 비디오는 디코딩하지 않는다.
+                trackSelectionParameters = trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
+                    .build()
+            }
     }
 }

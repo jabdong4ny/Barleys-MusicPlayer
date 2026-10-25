@@ -73,8 +73,17 @@ class YoutubeExtractorService @Inject constructor(okHttpClient: OkHttpClient) {
                     .filter { it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP }
                     .maxByOrNull { it.averageBitrate }
                     ?: extractor.audioStreams.maxByOrNull { it.averageBitrate }
+                // '아동용'으로 지정된 영상(주니토니 등)은 오디오 전용 스트림 없이 오디오+비디오가 합쳐진
+                // 360p MP4 하나만 내려올 때가 있다. 그럴 땐 그 스트림을 쓰고, 비디오 트랙은 플레이어에서 꺼둔다.
+                val fallbackMuxed = if (bestAudio == null) {
+                    extractor.videoStreams
+                        .filter { it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP }
+                        .minByOrNull { it.height }
+                } else {
+                    null
+                }
+                val streamUrl = (bestAudio?.content ?: fallbackMuxed?.content)
                     ?: throw IOException("오디오 스트림을 찾을 수 없습니다 (라이브 방송일 수 있어요)")
-                val streamUrl = bestAudio.content ?: throw IOException("스트림 URL이 없습니다")
                 val description = extractor.description?.toPlainText()?.takeIf { it.isNotBlank() }
                 val details = StreamDetails(streamUrl, description)
                 streamDetailsCache[videoId] = CachedStreamDetails(details, System.currentTimeMillis())
