@@ -1,9 +1,23 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.android.legacy.kapt) // Hilt kapt를 위해 필요 (AGP 9 built-in Kotlin)
     alias(libs.plugins.hilt.android)
 }
+
+// 릴리스 서명 정보: CI는 환경 변수로, 로컬은 루트의 keystore.properties(커밋 금지)로 넘깁니다.
+// 둘 다 없으면 release 빌드는 서명되지 않은 APK로 나옵니다.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
+fun signingValue(propertyKey: String, envKey: String): String? =
+    System.getenv(envKey)?.takeIf { it.isNotBlank() } ?: keystoreProperties.getProperty(propertyKey)
+
+val releaseStoreFile = signingValue("storeFile", "RELEASE_KEYSTORE_PATH")
 
 android {
     namespace = "com.barley.musicplayer"
@@ -13,14 +27,27 @@ android {
         applicationId = "com.barley.musicplayer"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        // CI는 태그(v1.2.3)에서 계산한 값을 -PappVersionCode / -PappVersionName 으로 넘깁니다.
+        versionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 1
+        versionName = project.findProperty("appVersionName") as String? ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseStoreFile)
+                storePassword = signingValue("storePassword", "RELEASE_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "RELEASE_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

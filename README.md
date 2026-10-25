@@ -28,6 +28,60 @@
 
 Firebase 등 별도 설정이 필요 없습니다. Android Studio에서 `Barley-s-MusicPlayer` 폴더를 열고 Gradle sync 후 실행하면 바로 됩니다.
 
+## 지인에게 배포하기 (APK 직접 배포)
+
+YouTube 스트림을 비공식으로 추출하는 앱이라 Play 스토어 정책(다른 서비스의 약관을 위반하는 앱 금지)에 걸리므로, Play 스토어 대신 서명된 APK를 GitHub Releases로 배포합니다.
+
+### 1. 릴리스 서명 키 만들기 (최초 1회)
+
+```bash
+keytool -genkeypair -v -keystore release.jks -alias barley \
+  -keyalg RSA -keysize 4096 -validity 10000
+```
+
+- `release.jks`와 비밀번호는 **반드시 안전한 곳에 백업**하세요. 키를 잃어버리면 기존 사용자에게 업데이트를 줄 수 없고, 앱을 지웠다가 다시 설치해야 합니다.
+- 키 파일은 저장소에 커밋하지 마세요. (`.gitignore`에 `*.jks`, `keystore.properties`가 들어 있습니다)
+
+### 2. GitHub Secrets 등록 (최초 1회)
+
+저장소 Settings → Secrets and variables → Actions → New repository secret 에 아래 4개를 등록합니다.
+
+| 이름 | 값 |
+|---|---|
+| `RELEASE_KEYSTORE_BASE64` | `base64 -w0 release.jks` 출력값 (macOS는 `base64 -i release.jks`) |
+| `RELEASE_KEYSTORE_PASSWORD` | 키스토어 비밀번호 |
+| `RELEASE_KEY_ALIAS` | 키 별칭 (위 예시는 `barley`) |
+| `RELEASE_KEY_PASSWORD` | 키 비밀번호 |
+
+### 3. 릴리스 내기
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+태그를 push하면 GitHub Actions(`.github/workflows/release.yml`)가 서명된 APK를 빌드해서 Release에 올립니다.
+
+- 태그는 `v주.부.수` 형식이어야 하고, versionCode는 태그에서 자동 계산됩니다 (`v1.2.3` → `10203`). 업데이트가 설치되려면 매번 이전보다 큰 버전으로 태그를 달아야 합니다.
+- 태그가 아닌 일반 push에도 release 빌드가 도는데, 빌드가 깨지지 않았는지 확인하는 용도입니다. 서명 키가 등록돼 있으면 서명된 테스트 APK가 Actions 실행 화면의 Artifacts에 7일간 남습니다.
+
+### 4. 지인들이 설치/업데이트하는 방법
+
+- Release 페이지에서 APK를 받아 설치합니다. 처음 한 번은 "출처를 알 수 없는 앱 설치"를 허용해야 합니다.
+- [Obtainium](https://github.com/ImranR98/Obtainium)에 이 저장소의 Release를 등록해 두면 새 버전이 나왔을 때 알려주고 업데이트까지 해줍니다.
+- 저장소가 비공개(private)라면 Release도 저장소 접근 권한이 있는 사람만 볼 수 있습니다. 지인을 Collaborator로 추가하거나, 받은 APK를 직접 전달하세요.
+
+### 로컬에서 서명된 APK 빌드
+
+루트에 `keystore.properties`를 만들고 (커밋 금지) `./gradlew assembleRelease` 를 실행합니다.
+
+```properties
+storeFile=/절대/경로/release.jks
+storePassword=키스토어 비밀번호
+keyAlias=barley
+keyPassword=키 비밀번호
+```
+
 ## 알려진 제약 (MVP 범위)
 
 - **비공식 추출 방식**: 위에서 설명한 대로 YouTube 쪽 변경에 취약합니다. 검색이나 재생이 안 되면 NewPipeExtractor 라이브러리 버전을 최신으로 올려보세요.
