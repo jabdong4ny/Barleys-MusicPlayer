@@ -2,6 +2,7 @@ package com.barley.musicplayer.presentation.search
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import android.util.Log
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,6 +12,7 @@ import com.barley.musicplayer.data.youtube.YoutubeExtractorService
 import com.barley.musicplayer.playback.PlayerController
 import com.barley.musicplayer.playback.PlayerUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -35,8 +37,8 @@ class SearchViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+    private val _error = MutableStateFlow<SearchError?>(null)
+    val error: StateFlow<SearchError?> = _error.asStateFlow()
 
     val playerState: StateFlow<PlayerUiState> = playerController.state
 
@@ -51,7 +53,7 @@ class SearchViewModel @Inject constructor(
         query = newQuery
         if (newQuery.isBlank()) {
             _results.value = emptyList()
-            _errorMessage.value = null
+            _error.value = null
         }
     }
 
@@ -59,13 +61,16 @@ class SearchViewModel @Inject constructor(
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return
         _isLoading.value = true
-        _errorMessage.value = null
+        _error.value = null
         viewModelScope.launch {
             try {
                 _results.value = youtubeExtractorService.search(trimmed)
                 recentSearchRepository.addQuery(trimmed)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _errorMessage.value = e.message ?: "검색 중 오류가 발생했어요"
+                Log.w("SearchViewModel", "search failed: ${e.message}", e)
+                _error.value = e.toSearchError()
             } finally {
                 _isLoading.value = false
             }
